@@ -153,19 +153,47 @@ class Users{
             }
         })
     }
+    getNaCoLo(email) {
+        return new Promise(async (resolve, reject) => {
+            try{
+                const userID = await new Promise((resolve, reject) => {
+                    this.accountDS.loadDatabase()
+                    this.accountDS.findOne({email}, {user_id: 1}, function(err, accRec) {
+                        if(err)
+                            reject(err)
+                        resolve(accRec)
+                    })
+                })
+                const user = await new Promise((resolve, reject) => {
+                    this.usersDS.loadDatabase()
+                    this.usersDS.findOne({_id: userID.user_id}, {firstname: 1, middlename: 1, lastname: 1, contactno: 1, 
+                        province: 1, municipality: 1, barangay: 1}, function(err, userRec) {
+                            if(err)
+                                reject(err)
+                            resolve(userRec)
+                        })
+                })
+
+                resolve(user)
+            }
+            catch(err) {
+                reject(err)
+            }
+        })
+    }  // get active user [name, contactno, location = NaCoLo]
     postProperties(propType, refToken, params, propertyImages){
         return new Promise(async (resolve, reject) => {
             try{
                 switch(propType){
                     case "vehicle":
-                        let { vname, vlocation, vcontactno, vvehicleType, vvehicleModel, vinstallmentpaid, 
-                            vinstallmentduration, vdelinquent, vdescription } = params
-
+                        let { vehicleOwner, vehicleContactno, vehicleLocation, vehicleName, vehicleModel, vehicleInstallmentpaid, 
+                            vehicleInstallmentduration, vehicleDelinquent, vehicleDescription } = params
+                        console.log(params)
                         let vproperty = await new Promise(async(resolve, reject) => {
                             this.propertiesDS.loadDatabase()
                             const userID = await bridge.userID(refToken)
                             
-                            this.propertiesDS.insert({property_type: 'vehicle', user_id: userID.user_id},
+                            this.propertiesDS.insert({property_type: 'vehicle', user_id: userID.user_id, active: 1, assumption: 0},
                                 function(err, record){
                                     if(err)
                                         reject(err)
@@ -175,10 +203,10 @@ class Users{
                         
                         let vehicle = await new Promise((resolve, reject) => {
                             this.vehicleDS.loadDatabase()
-                            this.vehicleDS.insert({vehicle_owner: vname, vehicle_name: vvehicleType, contactno: vcontactno, vehicle_location: vlocation, 
-                                vehicle_model: vvehicleModel, vehicle_installmentpaid: vinstallmentpaid, 
-                                vehicle_installmentduration: vinstallmentduration, delinquent: vdelinquent, 
-                                description: vdescription, property_id: vproperty._id}, function(err, record){
+                            this.vehicleDS.insert({vehicle_owner: vehicleOwner, vehicle_name: vehicleName, contactno: vehicleContactno, vehicle_location: vehicleLocation, 
+                                vehicle_model: vehicleModel, vehicle_installmentpaid: vehicleInstallmentpaid, 
+                                vehicle_installmentduration: vehicleInstallmentduration, delinquent: vehicleDelinquent, 
+                                description: vehicleDescription, property_id: vproperty._id}, function(err, record){
                                     if(err)
                                         reject(err)
                                     resolve(record)
@@ -187,19 +215,17 @@ class Users{
 
                         this.vehicleImagesDS.loadDatabase()
                         this.vehicleImagesDS.insert({vehicle_id: vehicle._id, images: propertyImages})
-                        resolve([{
-                            message: 'uploading properties was successfull'
-                        }])
+                        resolve({message: 'uploading properties was successfull', has_error: false})
                     break;
                     case "realestate":
-                        const { rowner, rlocation, rcontactno, rrealestateType, rdeveloper, rinstallmentpaid, rinstallmentduration, 
-                            rdelinquent, rdescription } = params
+                        const { realestateOwner, realestateContactno, realestateLocation, realestateDeveloper, realestateType, realestateInstallmentpaid, 
+                            realestateInstallmentduration, realestateDelinquent, realestateDescriptions } = params
                         
                         let userID = await bridge.userID(refToken)
 
                         let property = await new Promise((resolve, reject) => {
                             this.propertiesDS.loadDatabase()
-                            this.propertiesDS.insert({property_type: propType, user_id: userID.user_id}, function(err, record){
+                            this.propertiesDS.insert({property_type: propType, user_id: userID.user_id, active: 1, assumption: 0}, function(err, record){
                                 if(err)
                                     reject(err)
                                 resolve(record)
@@ -208,23 +234,23 @@ class Users{
                         
                         let realestate = await new Promise((resolve, reject) => {
                             this.realestatesDS.loadDatabase()
-                            this.realestatesDS.insert({realestate_owner: rowner, realestate_contactno: rcontactno, realestate_type: rrealestateType, realestate_location: rlocation,
-                                realestate_installmentpaid: rinstallmentpaid, realestate_installmentduration: rinstallmentduration,
-                                realestate_delinquent: rdelinquent, realestate_description: rdescription, property_id: property._id}, function(err, record){
+                            this.realestatesDS.insert({realestate_owner: realestateOwner, realestate_contactno: realestateContactno, realestate_type: realestateType, realestate_location: realestateLocation,
+                                realestate_installmentpaid: realestateInstallmentpaid, realestate_installmentduration: realestateInstallmentduration,
+                                realestate_delinquent: realestateDelinquent, realestate_description: realestateDescriptions, property_id: property._id}, function(err, record){
                                     if(err)
                                         reject(err)
                                     resolve(record)
                                 })
                         })
                         
-                        switch(rrealestateType){
+                        switch(realestateType){
                             case 'house':
                                 this.housesDS.loadDatabase()
-                                this.housesDS.insert({house_developer: rdeveloper, images: propertyImages, realestate_id: realestate._id})
+                                this.housesDS.insert({house_developer: realestateDeveloper, images: propertyImages, realestate_id: realestate._id})
                             break;
                             case 'house and lot':
                                 this.halsDS.loadDatabase()
-                                this.halsDS.insert({hal_developer: rdeveloper, images: propertyImages, realestate_id: realestate._id})
+                                this.halsDS.insert({hal_developer: realestateDeveloper, images: propertyImages, realestate_id: realestate._id})
                             break;
                             case 'lot':
                                 this.lotsDS.loadDatabase()
@@ -232,10 +258,9 @@ class Users{
                             break;
                             default:
                                 console.log('no realestateType')
+                                reject({message: "no realestate type"})
                         }
-                        resolve([{
-                            message: 'uploading properties was successfull'
-                        }])
+                        resolve({message: 'uploading properties was successfull', has_error: false})
                     break;
                     case "jewelry":
                         const { jowner, jlocation, jcontactno, jjewelryName, jjewelryType, jinstallmentpaid, 
@@ -245,7 +270,8 @@ class Users{
                             const userID = await bridge.userID(refToken)
 
                             this.propertiesDS.loadDatabase()
-                            this.propertiesDS.insert({property_type: 'jewelry', user_id: userID.user_id}, function(err, record){
+                            this.propertiesDS.insert({property_type: 'jewelry', user_id: userID.user_id, active: 1, 
+                                assumption: 0}, function(err, record){
                                 if(err)
                                     reject(err)
                                 resolve(record)
@@ -257,9 +283,7 @@ class Users{
                             jewelry_installmentduration: jinstallmentduration, jewelry_delinquent: jdelinquent, jewelry_description: jdescription,
                             images: propertyImages, property_id: jproperty._id})
                         
-                        resolve([{
-                            message: 'uploading properties was successfull'
-                        }])
+                        resolve({message: 'uploading properties was successfull', has_error: false})
                     break;
                     default:
                         reject({
@@ -513,7 +537,7 @@ class Assumrs{
                             case 'house and lot':
                                 const hal = await new Promise((resolve, reject) => {
                                     this.halsDS.loadDatabase()
-                                    this.halsDS.findOne({realestate: realestate._id}, function(err, halRec) {
+                                    this.halsDS.findOne({realestate_id: realestate._id}, function(err, halRec) {
                                         if(err)
                                             reject(err)
                                         resolve(halRec)
@@ -774,7 +798,7 @@ class Assumrs{
                             reject(err)
                         resolve(accRec)
                     })
-                })
+                })  // the active user
 
                 const assumer = await new Promise((resolve, reject) => {
                     this.assumersDS.loadDatabase()
@@ -818,7 +842,7 @@ class Assumrs{
                                 reject(err)
                             resolve(userRec)
                         })
-                    })  // message_receiver
+                    })  // message_receiver OR the property_owner
 
                     const user_name_receiver = await new Promise((resolve, reject) => {
                         this.usersDS.loadDatabase()
@@ -827,7 +851,16 @@ class Assumrs{
                                 reject(err)
                             resolve(userRec)
                         })
-                    })  // message_receiver
+                    })  // message_receiver OR the property_owner
+
+                    const user_receiver_email = await new Promise((resolve, reject) => {
+                        this.accountDS.loadDatabase()
+                        this.accountDS.findOne({user_id: user_receiver.user_id}, {email: 1}, function(err, accRec) {
+                            if(err)
+                                reject(err)
+                            resolve(accRec)
+                        })
+                    })
 
                     const currentMessage = await new Promise((resolve, reject) => {
                         this.messagesDS.loadDatabase()
@@ -848,8 +881,8 @@ class Assumrs{
                     if(currentMessage)
                         this.messagesDS.update({_id: currentMessage._id}, {$set: {current: 0}})
                     
-                    this.messagesDS.insert({sender_id: userID.user_id, message_sender: `${user_sender.lastname}, ${user_sender.firstname}, ${user_sender.middlename}`, 
-                        receiver_id: user_receiver.user_id, message_receiver: `${user_name_receiver.lastname}, ${user_name_receiver.firstname} ${user_name_receiver.middlename}`
+                    this.messagesDS.insert({sender_id: userID.user_id, sender_email: email, message_sender: `${user_sender.lastname}, ${user_sender.firstname}, ${user_sender.middlename}`, 
+                        receiver_id: user_receiver.user_id, receiver_email: user_receiver_email.email, message_receiver: `${user_name_receiver.lastname}, ${user_name_receiver.firstname} ${user_name_receiver.middlename}`
                         , message, current: 1, message_date: fullDate})
 
                     this.messagesDS.loadDatabase()
