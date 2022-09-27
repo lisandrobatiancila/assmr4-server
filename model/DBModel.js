@@ -2,7 +2,7 @@ const DataStore = require('nedb')
 const bcrpyt = require('bcrypt')
 const jwt = require('jsonwebtoken')
 const bridge = require('../webAPI/middleware/bridge/bridge')
-const { of, from, reduce, map, concatAll, switchMap, merge, tap, concat, forkJoin } = require('rxjs')
+const { of, from, reduce, map, concatAll, switchMap, merge, tap, concat, forkJoin, async, groupBy, mergeMap } = require('rxjs')
 
 class Users{
     constructor(){
@@ -306,6 +306,72 @@ class Users{
             }
         })
     }
+    retreievePostedProperties(email, propertyType, otherType) {
+        return new Promise(async (resolve, reject) => {
+            try{
+                var user = null
+                switch(propertyType) {
+                    case "vehicles":
+                        user = await new Promise((resolve, reject) => {
+                            this.accountDS.loadDatabase()
+                            this.accountDS.findOne({email}, {user_id: 1}, function(err, accRec) {
+                                if(err)
+                                    reject(err)
+                                resolve(accRec)
+                            })
+                        })
+
+                        const properties = new Promise((resolve, reject) => {
+                            this.propertiesDS.loadDatabase()
+                            this.propertiesDS.find({user_id: user.user_id, property_type: propertyType.replace('s', '')}, function(err, propRec) {
+                                if(err)
+                                    reject(err)
+                                resolve(propRec)
+                            })
+                        })
+
+                        properties.then(properties => {
+                            properties.map(async property => await new Promise(async (resolve, reject) => {
+                                const vehicles = await new Promise((resolve, reject) => {
+                                    this.vehicleDS.loadDatabase()
+                                    this.vehicleDS.findOne({property_id: property._id}, function(err, vehRec) {
+                                        if(err)
+                                            reject(err)
+                                        resolve(vehRec)
+                                    })
+                                })
+
+                                vehicles?vehicles.vimg = await new Promise((resolve, reject) => {
+                                    this.vehicleImagesDS.loadDatabase()
+                                    this.vehicleImagesDS.findOne({vehicle_id: vehicles._id}, function(err, vimg) {
+                                        if(err)
+                                            reject(err)
+                                        resolve(vimg)
+                                    })
+                                }): []
+
+                                property.vehicle = vehicles
+                            }))
+                            setTimeout(()=> {
+                                resolve(properties)
+                            }, 1500)
+                        }).catch(err => reject(err))
+                    break;
+                    case "jewelries":
+                         resolve({mess: 'jewel'})
+                    break;
+                    case "realestates":
+                         resolve({mess: 'real'})
+                    break;
+                    default:
+                        reject({message: "no propertyType"})
+                }
+            }
+            catch(err) {
+                reject(err)
+            }
+        })
+    }  // all active user posted properties by type ['realestate', 'vehicle', 'jewelry'] by default it's "vehicle"
 }
 
 class Assumrs{
@@ -608,10 +674,56 @@ class Assumrs{
                                 resolve(totalRec)
                             })
                         })
-                        // const total_assumed_properties = new Promise((resolve, reject) => {
+                        
+                        const total_assumed_properties = await new Promise(async (resolve, reject) => {
+                            const account = await new Promise((resolve, reject) => {
+                                this.accountDS.loadDatabase()
+                                this.accountDS.findOne({email: verify_user.email}, {user_id: 1}, function(err, accRec) {
+                                    if(err)
+                                        reject(err)
+                                    resolve(accRec)
+                                })
+                            })
 
-                        // })
-                        resolve({totalPosted: total_posted_properties})
+                            this.assumersDS.loadDatabase()
+                            this.assumersDS.count({user_id: account.user_id}, function(err, assmrRec) {
+                                if(err)
+                                    reject(err)
+                                resolve(assmrRec)
+                            })
+                        })
+                        resolve({totalPosted: total_posted_properties, totalAssumed: total_assumed_properties})
+                    break;
+                    case 'data-inquiry':
+                        const account = await new Promise((resolve, reject) => {
+                            this.accountDS.loadDatabase()
+                            this.accountDS.findOne({email: verify_user.email}, {user_id: 1}, function(err, accRec) {
+                                if(err)
+                                    reject(err)
+                                resolve(accRec)
+                            })
+                        })
+                        const properties = await new Promise((resolve, reject) => {
+                            this.propertiesDS.loadDatabase()
+                            this.propertiesDS.find({user_id: account.user_id}, function(err, propRec) {
+                                if(err)
+                                    reject(err)
+                                resolve(propRec)
+                            })
+                        })
+
+                        from(properties)
+                            .pipe(
+                                groupBy(property => property.property_type),
+                                mergeMap(group$ => group$.pipe(reduce((acc, cur) => [...acc, cur], []))),
+                                map(arr => ({ 
+                                    key: arr[0].property_type, 
+                                    total_assumer: arr.reduce((acc, curr) => acc+curr.assumption, 0), 
+                                    total_posted: arr.length
+                                })),
+                                reduce((acc, curr) => [...acc, curr], [])
+                            )
+                            .subscribe(properties => resolve(properties))
                     break;
                     default:
                         console.log('no request_type')
@@ -702,7 +814,7 @@ class Assumrs{
                 this.messagesDS.find({$or: [{sender_id: sender_id, receiver_id: receiver_id}, {sender_id: receiver_id, receiver_id: sender_id}]}, function(err, messRec) {
                     if(err)
                         reject(err)
-                    resolve(messRec)
+                    resolve(messRec.sort((a,b )=> a.count-b.count))
                 })
             }
             catch(err) {
@@ -888,6 +1000,110 @@ class Assumrs{
                     this.messagesDS.loadDatabase()
                 }
                 resolve({message: "assumption of property was successfull!"})
+            }
+            catch(err) {
+                reject(err)
+            }
+        })
+    }  // it can also accept a message from assumer
+    userSendMessageThroughProperties(params) {
+        return new Promise(async (resolve, reject) => {
+            try{
+                const { propertyID, message, verified } = params
+
+                if(!/[^\s]/.test(message))
+                    return reject({message: "empty fields", has_error: true})
+
+                const user_message_sender = await new Promise((resolve, reject) => {
+                    this.accountDS.loadDatabase()
+                    this.accountDS.findOne({email: verified.email}, {user_id: 1}, function(err, accRec) {
+                        if(err)
+                            reject(err)
+                        resolve(accRec)
+                    })
+                })  // user-message-sender
+
+                const user_sender = await new Promise((resolve, reject) => {
+                    this.usersDS.loadDatabase()
+                    this.usersDS.findOne({_id: user_message_sender.user_id}, {firstname: 1, middlename: 1, lastname: 1}, function(err, userRec) {
+                        if(err)
+                            reject(err)
+                        resolve(userRec)
+                    })
+                })  // user-message-sender
+
+                const user_message_receiver = await new Promise((resolve, reject) => {
+                    this.propertiesDS.loadDatabase()
+                    this.propertiesDS.findOne({_id: propertyID}, {user_id: 1}, function(err, propRec) {
+                        if(err)
+                            reject(err)
+                        resolve(propRec)
+                    })
+                })  // user-message-receiver
+
+                const user_account = await new Promise((resolve, reject) => {
+                    this.accountDS.loadDatabase()
+                    this.accountDS.findOne({user_id: user_message_receiver.user_id}, {email: 1, user_id: 1}, function(err, accRec) {
+                        if(err)
+                            reject(err)
+                        resolve(accRec)
+                    })
+                })
+
+                const user_receiver = await new Promise((resolve, reject) => {
+                    this.usersDS.loadDatabase()
+                    this.usersDS.findOne({_id: user_account.user_id}, {firstname: 1, middlename: 1, lastname: 1}, function(err, userRec) {
+                        if(err)
+                            reject(err)
+                        resolve(userRec)
+                    })
+                })
+
+                const currentMessage = await new Promise((resolve, reject) => {
+                    this.messagesDS.loadDatabase()
+                    this.messagesDS.findOne(
+                        {
+                            $where: function() {
+                                return (this.sender_id === user_sender._id && this.receiver_id === user_receiver._id && this.current == 1)
+                                    || (this.sender_id === user_receiver._id && this.receiver_id === user_sender._id && this.current == 1)
+                            }
+                        }, function(err, messRec) {
+                            if(err)
+                                reject(err)
+                            resolve(messRec)
+                        }
+                    )
+                })
+
+                if(currentMessage)
+                    this.messagesDS.update({_id: currentMessage._id}, {$set: {current: 0}})
+                
+                const date = new Date()
+                const fullDate = `${date.getMonth()+1}/${date.getDate()}/${date.getFullYear()}`
+
+                this.messagesDS.loadDatabase()
+                const currentCounter = await new Promise((resolve, reject) => {
+                    this.messagesDS.loadDatabase()
+                    this.messagesDS.findOne(
+                        {
+                            $where: function () {
+                                return (this.sender_id === user_sender._id || this.receiver_id === user_sender._id && this.current == 1)
+                            }
+                        }, function(err, currCount) {
+                            if(err)
+                                reject(err)
+                            resolve(currCount)
+                        }
+                    )
+                })
+                console.log(currentCounter)
+                // this.messagesDS.insert({
+                //     sender_email: verified.email, sender_id: user_sender._id, message_sender: `${user_sender.lastname}, ${user_sender.firstname} ${user_sender.middlename}`,
+                //     receiver_email: user_account.email, receiver_id: user_receiver._id, message_receiver: `${user_receiver.lastname}, ${user_receiver.firstname} ${user_receiver.middlename}`,
+                //     message, current: 1, date: fullDate, count: currentMessage?parseInt(currentMessage.count)+1:0
+                // })
+                this.messagesDS.loadDatabase()
+                resolve({message: "message sent", has_error: false})
             }
             catch(err) {
                 reject(err)

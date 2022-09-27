@@ -13,6 +13,8 @@ const refreshAPI = require('./api/refresh/refreshAPI')
 const profileAPI = require('./api/main/account/profile/profileAPI')
 const chatroomAPI = require('./api/main/account/chatroom/chatroomAPI')
 const assumptionAPI = require('./api/main/assumptions/assumptionAPI')
+const mainPostedPropertiesAPI = require('./api/main/account/properties/postedPropertiesAPI')
+const mainAssumedPropertiesAPI = require('./api/main/account/properties/assumedPropertiesAPI')
 
 // const imageProvider = require('./controller/image/imageController')
 
@@ -30,6 +32,8 @@ webAPI.use('/main', postPropertiesAPI)  // to post a properties
 webAPI.use('/main/dashboard', dashboardAPI)
 webAPI.use('/main/profile', profileAPI)
 webAPI.use('/main/chatrooms', chatroomAPI)
+webAPI.use('/main/posted-properties', mainPostedPropertiesAPI)
+webAPI.use('/main/assumed-properties', mainAssumedPropertiesAPI)
 webAPI.use('/assumptions', assumptionAPI)
 
 module.exports = webAPI

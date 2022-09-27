@@ -31,7 +31,7 @@ const signinController = (req, res) => {
                 maxAge: 24*60*60*1000, httpOnly: true
             })
             
-            res.json({message: response.message, accessToken, isPassed: true, user: response.user})
+            res.json({message: response.message, wew: 'wewewe', accessToken, isPassed: true, user: response.user})
         })
         .catch(err => res.json(err))
 }

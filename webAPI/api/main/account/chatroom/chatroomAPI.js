@@ -11,4 +11,7 @@ router.route('/user-send-message')
 router.route('/user-want-to-chat-with/:sender_id/:receiver_id')
     .get(chatroomController.userWantToChatWith)
 
+router.route('/user-send-message-through-properties')
+    .post(chatroomController.userSendMessageThroughProperties)  // the user send messages through posted-properties / properties that are ready for assumption
+
 module.exports = router
