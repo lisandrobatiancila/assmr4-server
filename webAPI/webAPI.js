@@ -15,6 +15,7 @@ const chatroomAPI = require('./api/main/account/chatroom/chatroomAPI')
 const assumptionAPI = require('./api/main/assumptions/assumptionAPI')
 const mainPostedPropertiesAPI = require('./api/main/account/properties/postedPropertiesAPI')
 const mainAssumedPropertiesAPI = require('./api/main/account/properties/assumedPropertiesAPI')
+// const updatePostedPropertiesAPI = require('./api/main/account/properties/updatePropertiesAPI')
 
 // const imageProvider = require('./controller/image/imageController')
 
@@ -35,5 +36,6 @@ webAPI.use('/main/chatrooms', chatroomAPI)
 webAPI.use('/main/posted-properties', mainPostedPropertiesAPI)
 webAPI.use('/main/assumed-properties', mainAssumedPropertiesAPI)
 webAPI.use('/assumptions', assumptionAPI)
+// webAPI.use('/update-properties', updatePostedPropertiesAPI)
 
 module.exports = webAPI

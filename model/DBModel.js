@@ -310,6 +310,7 @@ class Users{
         return new Promise(async (resolve, reject) => {
             try{
                 var user = null
+                var properties = null
                 switch(propertyType) {
                     case "vehicles":
                         user = await new Promise((resolve, reject) => {
@@ -321,13 +322,14 @@ class Users{
                             })
                         })
 
-                        const properties = new Promise((resolve, reject) => {
+                        properties = new Promise((resolve, reject) => {
                             this.propertiesDS.loadDatabase()
-                            this.propertiesDS.find({user_id: user.user_id, property_type: propertyType.replace('s', '')}, function(err, propRec) {
-                                if(err)
-                                    reject(err)
-                                resolve(propRec)
-                            })
+                            this.propertiesDS.find({user_id: user.user_id, property_type: propertyType.replace('s', ''), active: 1},
+                                function(err, propRec) {
+                                    if(err)
+                                        reject(err)
+                                    resolve(propRec)
+                                })
                         })
 
                         properties.then(properties => {
@@ -358,7 +360,42 @@ class Users{
                         }).catch(err => reject(err))
                     break;
                     case "jewelries":
-                         resolve({mess: 'jewel'})
+                        user = await new Promise((resolve, reject) => {
+                            this.accountDS.loadDatabase()
+                            this.accountDS.findOne({email}, {user_id: 1}, function(err, userRec) {
+                                if(err)
+                                    reject(err)
+                                resolve(userRec)
+                            })
+                        });
+
+                        properties = await new Promise((resolve, reject) => {
+                            this.propertiesDS.loadDatabase()
+                            this.propertiesDS.find({$and: [
+                                {property_type: propertyType.replace('ies', 'y')},
+                                {user_id: user.user_id}
+                            ]}, function(err, propRec) {
+                                if(err)
+                                    reject(err)
+                                resolve(propRec)
+                            })
+                        })
+
+                        properties.map(async property => {
+                            const jewelry = await new Promise((resolve, reject) => {
+                                this.jewelriesDS.loadDatabase()
+                                this.jewelriesDS.findOne({property_id: property._id}, function(err, jewelRec) {
+                                    if(err)
+                                        reject(err)
+                                    resolve(jewelRec)
+                                })
+                            })
+                            property.jinfo = jewelry
+                        })
+
+                        setTimeout(() => {
+                            resolve(properties)
+                        }, 1500)
                     break;
                     case "realestates":
                          resolve({mess: 'real'})
@@ -372,6 +409,91 @@ class Users{
             }
         })
     }  // all active user posted properties by type ['realestate', 'vehicle', 'jewelry'] by default it's "vehicle"
+    updateProperty(params) {
+        return new Promise((resolve, reject) => {
+            try{
+                const { propType, propID, payloads } = params
+
+                switch(propType) {
+                    case 'vehicle':
+                        this.vehicleDS.loadDatabase()
+                        payloads.map(payload => {
+                            this.vehicleDS.update({_id: propID},
+                                {
+                                    $set:
+                                        payload.field === 'owner'?{vehicle_owner: payload.key}:
+                                        payload.field === 'contact'?{contactno: payload.key}:
+                                        payload.field === 'location'?{vehicle_location: payload.key}:
+                                        payload.field === 'name'?{vehicle_name: payload.key}:
+                                        payload.field === 'model'?{vehicle_model: payload.key}:
+                                        payload.field === 'installmentpaid'?{vehicle_installmentpaid: payload.key}:
+                                        payload.field === 'installmentduration'?{vehicle_installmentduration: payload.key}:
+                                        payload.field === 'delinquent'?{delinquent: payload.key}:
+                                        payload.field === 'description'?{description: payload.key}:''
+                                }
+                                ,
+                                function(err, updateRec) {
+                                    if(err)
+                                        reject(err)
+                            })
+                        })
+                        this.vehicleDS.loadDatabase()
+                        resolve({message: 'Product was updated successfully'})
+                    break;
+                    case 'jewelry':
+                        this.jewelriesDS.loadDatabase()
+                        payloads.map(payload => {
+                            this.jewelriesDS.update({_id: propID},
+                                {
+                                    $set: payload.field === 'owner'?{jewelry_owner: payload.key}:
+                                        payload.field === 'contact'?{jewelry_contactno: payload.key}:
+                                        payload.field === 'location'?{jewelry_location: payload.key}:
+                                        payload.field === 'name'?{jewelry_name: payload.key}:
+                                        payload.field === 'model'?{jewelry_type: payload.key}:
+                                        payload.field === 'installmentpaid'?{jewelry_installmentpaid: payload.key}:
+                                        payload.field === 'installmentduration'?{jewelry_installmentduration: payload.key}:
+                                        payload.field === 'delinquent'?{jewelry_delinquent: payload.key}:
+                                        payload.field === 'description'?{jewelry_description: payload.key}:''
+                                }, function(err, updatedRec) {
+                                    if(err)
+                                        reject(err)
+                                }
+                            )
+                        });
+                        this.jewelriesDS.loadDatabase()
+                        resolve({message: 'Product was updated successfully'})
+                    break;
+                    case 'realestate':
+                    break;
+                    default:
+                        console.log('no propertyType')
+                        reject({message: 'no propertyType'})
+                }
+            }
+            catch(err) {
+                reject(err)
+            }
+        })
+    }
+    dropProperty(propertyID) {
+        return new Promise((resolve, reject) => {
+            try{
+                this.propertiesDS.loadDatabase()
+                this.propertiesDS.update({_id: propertyID}, {
+                    $set: {active: 0}
+                    }, function(err, propUpRec) {
+                        if(err)
+                            reject(err)
+                        resolve({message: 'property was dropped successfully'})
+                    }
+                )
+                this.propertiesDS.loadDatabase()
+            }
+            catch(err) {
+                reject(err)
+            }
+        })
+    }
 }
 
 class Assumrs{
@@ -625,6 +747,7 @@ class Assumrs{
                             this.jewelriesDS.findOne({_id: propertyID}, function(err, jrecords) {
                                 if(err)
                                     reject(err)
+                                jrecords.propertyType = 'jewelry'
                                 resolve(jrecords)
                             })
                         })
